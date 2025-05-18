@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Canvas Drawing</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas" width="1200" height="800"></canvas>
+    <script>
+        class System {
+            constructor(canvasId) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext("2d");
+                this.origin = { x: this.canvas.width / 2, y: this.canvas.height / 2 };
+
+                console.log(this.origin);
+                this.invY = false;
+            }
+
+            toCanvasCoords(x, y) {
+                const cx = this.origin.x + x;
+                const cy = this.origin.y + (this.invY ? -y : y);
+                return { x: cx, y: cy };
+            }
+
+            drawSystem() {
+                this.absLine(0, this.origin.y, this.canvas.width, this.origin.y);
+                this.absLine(this.origin.x, 0, this.origin.x, this.canvas.height);
+
+            }
+
+            line(x1, y1, x2, y2, color = "black", width = 1) {
+                const p1 = this.toCanvasCoords(x1, y1);
+                const p2 = this.toCanvasCoords(x2, y2);
+                this.ctx.beginPath();
+                this.ctx.moveTo(p1.x, p1.y);
+                this.ctx.lineTo(p2.x, p2.y);
+                this.ctx.strokeStyle = color;
+                this.ctx.lineWidth = width;
+                this.ctx.stroke();
+            }
+
+            absLine(x1, y1, x2, y2, color = "black", width = 1) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(x1, y1);
+                this.ctx.lineTo(x2, y2);
+                this.ctx.strokeStyle = color;
+                this.ctx.lineWidth = width;
+                this.ctx.stroke();
+            }
+
+            circle(x, y, r, color = "black", fill = false) {
+                const p = this.toCanvasCoords(x, y);
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+                if (fill) {
+                    this.ctx.fillStyle = color;
+                    this.ctx.fill();
+                } else {
+                    this.ctx.strokeStyle = color;
+                    this.ctx.stroke();
+                }
+            }
+
+            absCircle(x, y, r, color = "black", fill = false) {
+                this.ctx.beginPath();
+                this.ctx.arc(x, y, r, 0, Math.PI * 2);
+                if (fill) {
+                    this.ctx.fillStyle = color;
+                    this.ctx.fill();
+                } else {
+                    this.ctx.strokeStyle = color;
+                    this.ctx.stroke();
+                }
+            }
+
+            angleBetween(v1, v2, v3) {
+                const a = { x: v1.x - v2.x, y: v1.y - v2.y };
+                const b = { x: v3.x - v2.x, y: v3.y - v2.y };
+
+                const dot = a.x * b.x + a.y * b.y;
+                const magA = Math.hypot(a.x, a.y);
+                const magB = Math.hypot(b.x, b.y);
+
+                const cosTheta = dot / (magA * magB);
+                const angleRad = Math.acos(Math.max(-1, Math.min(1, cosTheta))); // 安全にクランプ
+                const angleDeg = angleRad * (180 / Math.PI);
+
+                return angleDeg;
+            }
+
+            signedAngle(v1, v2, v3) {
+                const a = { x: v1.x - v2.x, y: v1.y - v2.y };
+                const b = { x: v3.x - v2.x, y: v3.y - v2.y };
+
+                const angleA = Math.atan2(a.y, a.x);
+                const angleB = Math.atan2(b.y, b.x);
+
+                let angle = angleB - angleA;
+
+                // -π〜π の範囲に正規化
+                if (angle > Math.PI) angle -= 2 * Math.PI;
+                if (angle < -Math.PI) angle += 2 * Math.PI;
+
+                return angle * (180 / Math.PI); // 角度（度数法）
+            }
+
+            //円弧角
+            drawArcBetween(v1, v2, v3, radius = 30, color = "black") {
+                // ベクトル a = v1 - v2, b = v3 - v2
+                const a = { x: v1.x - v2.x, y: v1.y - v2.y };
+                const b = { x: v3.x - v2.x, y: v3.y - v2.y };
+
+                // invY を考慮した角度（Y反転ならY成分の符号を反転）
+                const ay = this.invY ? -a.y : a.y;
+                const by = this.invY ? -b.y : b.y;
+
+                const angleA = Math.atan2(ay, a.x);
+                const angleB = Math.atan2(by, b.x);
+
+                // v2をキャンバス座標に変換（中心）
+                const center = this.toCanvasCoords(v2.x, v2.y);
+
+                this.ctx.beginPath();
+                this.ctx.arc(
+                    center.x,
+                    center.y,
+                    radius,
+                    angleA,
+                    angleB,
+                    false  // false = 反時計回り（通常向き）
+                );
+                this.ctx.strokeStyle = color;
+                this.ctx.stroke();
+            }
+
+            //90度角
+            drawRectifiedLegs(v1, v2, v3, r = 10, color = "black") {
+                // a = v1 - v2, b = v3 - v2
+                const a = { x: v1.x - v2.x, y: v1.y - v2.y };
+                const b = { x: v3.x - v2.x, y: v3.y - v2.y };
+
+                // 正規化
+                const magA = Math.hypot(a.x, a.y);
+                const magB = Math.hypot(b.x, b.y);
+                const aNorm = { x: a.x / magA, y: a.y / magA };
+                const bNorm = { x: b.x / magB, y: b.y / magB };
+
+                // r倍
+                const aOffset = { x: aNorm.x * r, y: aNorm.y * r };
+                const bOffset = { x: bNorm.x * r, y: bNorm.y * r };
+
+                // 新しい点を計算
+                const leg1End = { x: v2.x + aOffset.x, y: v2.y + aOffset.y };
+                const leg2End = { x: v2.x + bOffset.x, y: v2.y + bOffset.y };
+                const leg3End = { x: v2.x + aOffset.x + bOffset.x, y: v2.y + aOffset.y + bOffset.y };
+
+                // 座標変換して描画（invY考慮）
+                const leg1 = this.toCanvasCoords(leg1End.x, leg1End.y);
+                const leg2 = this.toCanvasCoords(leg2End.x, leg2End.y);
+                const leg3 = this.toCanvasCoords(leg3End.x, leg3End.y);
+
+                this.ctx.beginPath();
+                this.ctx.moveTo(leg1.x, leg1.y);
+                this.ctx.lineTo(leg3.x, leg3.y);
+                this.ctx.moveTo(leg2.x, leg2.y);
+                this.ctx.lineTo(leg3.x, leg3.y);
+
+                this.ctx.strokeStyle = color;
+                this.ctx.stroke();
+            }
+
+            // Arrow drawing function to add to the System class
+            drawArrow(x1, y1, x2, y2, r, theta) {
+                // Convert start and end points to canvas coordinates
+                const start = this.toCanvasCoords(x1, y1);
+                const end = this.toCanvasCoords(x2, y2);
+
+                // Calculate the direction vector
+                const dx = end.x - start.x;
+                const dy = end.y - start.y;
+
+                // Calculate the length of the line
+                const length = Math.sqrt(dx * dx + dy * dy);
+
+                // Normalize the direction vector
+                const nx = dx / length;
+                const ny = dy / length;
+
+                // Calculate the perpendicular vector
+                const px = -ny;
+                const py = nx;
+
+                // Calculate half of the angle in radians
+                const halfAngleRad = (theta / 2) * (Math.PI / 180);
+
+                // Calculate the distance from the tip to the base of the triangle
+                const triangleHeight = r / Math.tan(halfAngleRad);
+
+                // Calculate the point where the triangle begins
+                const arrowBaseX = end.x - nx * triangleHeight;
+                const arrowBaseY = end.y - ny * triangleHeight;
+
+                // Calculate the width of the triangle base
+                const triangleWidth = 2 * r;
+
+                // Calculate the points of the triangle
+                const leftX = arrowBaseX + px * (triangleWidth / 2);
+                const leftY = arrowBaseY + py * (triangleWidth / 2);
+
+                const rightX = arrowBaseX - px * (triangleWidth / 2);
+                const rightY = arrowBaseY - py * (triangleWidth / 2);
+
+                // Draw the line
+                this.ctx.beginPath();
+                this.ctx.moveTo(start.x, start.y);
+                this.ctx.lineTo(arrowBaseX, arrowBaseY);
+                this.ctx.strokeStyle = "black";
+                this.ctx.stroke();
+
+                // Draw the triangle
+                this.ctx.beginPath();
+                this.ctx.moveTo(end.x, end.y);
+                this.ctx.lineTo(leftX, leftY);
+                this.ctx.lineTo(rightX, rightY);
+                this.ctx.closePath();
+                this.ctx.fillStyle = "black";
+                this.ctx.fill();
+            }
+
+            //カギ括弧, depthは}の先っちょまでの距離
+            drawCurlyBrace(x1, y1, x2, y2, left = true, t = 0.5, depth = 20, color = "black", width = 1) {
+                // ワールド → Canvas 座標
+                const p1 = this.toCanvasCoords(x1, y1);
+                const p2 = this.toCanvasCoords(x2, y2);
+
+                // Canvas 上のベクトル
+                const dx = p2.x - p1.x, dy = p2.y - p1.y;
+                const len = Math.hypot(dx, dy);
+                if (len === 0) return;
+
+                // 直線方向の単位ベクトルと、その法線ベクトル
+                const ux = dx / len, uy = dy / len;
+
+                let nx;
+                let ny;
+                if (left) {
+                    // left 90
+                    nx = uy, ny = -ux;
+                } else {
+                    // right 90
+                    nx = -uy, ny = ux;
+                }
+
+                const offsetX = nx * depth / 5;
+                const offsetY = ny * depth / 5;
+
+
+                this.ctx.beginPath();
+                // 始点を少し内側にオフセット
+                //this.ctx.moveTo(p1.x + nx * (depth / 2), p1.y + ny * (depth / 2));
+                this.ctx.moveTo(p1.x + offsetX, p1.y + offsetY);
+
+                this.ctx.bezierCurveTo(
+                    p1.x + nx * depth + offsetX, p1.y + ny * depth + offsetY,
+                    p1.x + ux * len * t + offsetX, p1.y + uy * len * t + offsetY,
+                    p1.x + ux * len * t + nx * depth + offsetX, p1.y + uy * len * t + ny * depth + offsetY
+                );
+
+                this.ctx.bezierCurveTo(
+                    p1.x + ux * len * t + offsetX, p1.y + uy * len * t + offsetY,
+                    p1.x + ux * len + nx * depth + offsetX, p1.y + uy * len + ny * depth + offsetY,
+                    p2.x + offsetX, p2.y + offsetY
+                );
+
+                this.ctx.strokeStyle = color;
+                this.ctx.lineWidth = width;
+                this.ctx.stroke();
+            }
+
+            drawArcArrow(center_x, center_y, radius, startAngle, endAngle, r, theta, color = "black", width = 1) {
+                // 中心点をキャンバス座標に変換
+                const center = this.toCanvasCoords(center_x, center_y);
+
+                // Y軸反転を考慮した角度調整（Y軸が反転している場合は角度の向きも反転する）
+                let start = startAngle;
+                let end = endAngle;
+
+                if (this.invY) {
+                    // Y軸反転時は角度の向きも反転
+                    start = -startAngle;
+                    end = -endAngle;
+                }
+
+                // 円弧を描画
+                this.ctx.beginPath();
+                this.ctx.arc(center.x, center.y, radius, start, end, false);
+                this.ctx.strokeStyle = color;
+                this.ctx.lineWidth = width;
+                this.ctx.stroke();
+
+                // 円弧の終点座標を計算
+                const tipX = center.x + radius * Math.cos(end);
+                const tipY = center.y + radius * Math.sin(end);
+
+                // 円弧の終点での接線方向を計算
+                // 円の中心から終点への方向ベクトルに垂直な方向が接線方向
+                // invY を考慮して調整
+                const tangentX = this.invY ? -Math.sin(end) : Math.sin(end);
+                const tangentY = this.invY ? -Math.cos(end) : Math.cos(end);
+
+                // 矢印の幅を計算
+                const halfAngleRad = (theta / 2) * (Math.PI / 180);
+                const triangleWidth = 2 * r;
+
+                // 矢印の三角形の各点を計算
+                const arrowBaseX = tipX - tangentX * r;
+                const arrowBaseY = tipY + tangentY * r;
+
+                // 接線に垂直な方向（円の中心方向）
+                const radialX = Math.cos(end);
+                const radialY = Math.sin(end);
+
+                // 三角形の左右の点を計算
+                const leftX = arrowBaseX + radialX * (triangleWidth / 2);
+                const leftY = arrowBaseY + radialY * (triangleWidth / 2);
+
+                const rightX = arrowBaseX - radialX * (triangleWidth / 2);
+                const rightY = arrowBaseY - radialY * (triangleWidth / 2);
+
+                // 三角形（矢印の頭）を描画
+                this.ctx.beginPath();
+                this.ctx.moveTo(tipX, tipY);
+                this.ctx.lineTo(leftX, leftY);
+                this.ctx.lineTo(rightX, rightY);
+                this.ctx.closePath();
+                this.ctx.fillStyle = color;
+                this.ctx.fill();
+            }
+
+            // より使いやすく、2点と中心点を指定する別バージョン
+            drawArcArrowPoints(center_x, center_y, x1, y1, x2, y2, r, theta, color = "black", width = 1) {
+                // 中心点と始点、終点の関係から角度を計算
+                const p1 = { x: x1, y: y1 };
+                const p2 = { x: x2, y: y2 };
+                const center = { x: center_x, y: center_y };
+
+                // 半径を計算
+                const radius1 = Math.hypot(p1.x - center.x, p1.y - center.y);
+                const radius2 = Math.hypot(p2.x - center.x, p2.y - center.y);
+
+                // 平均半径を使用
+                const radius = (radius1 + radius2) / 2;
+
+                // 各点の角度を計算
+                let angle1 = Math.atan2(p1.y - center.y, p1.x - center.x);
+                let angle2 = Math.atan2(p2.y - center.y, p2.x - center.x);
+
+                // Y軸反転を考慮
+                if (this.invY) {
+                    angle1 = Math.atan2(-(p1.y - center.y), p1.x - center.x);
+                    angle2 = Math.atan2(-(p2.y - center.y), p2.x - center.x);
+                }
+
+                // 円弧の矢印を描画
+                this.drawArcArrow(center.x, center.y, radius, angle1, angle2, r, theta, color, width);
+            }
+
+
+        }
+
+        let degreesToRadians = degrees => (degrees * Math.PI) / 180;
+        let radiansToDegrees = radians => (radians * 180) / Math.PI;
+        let cos = Math.cos;
+        let sin = Math.sin;
+
+        // 使用例
+        const system = new System("canvas");
+        system.invY = true;
+
+        let r = 400;
+        let alpha = degreesToRadians(30);
+        let beta = degreesToRadians(30);
+
+
+        system.absCircle(system.origin.x, system.origin.y, r);
+
+        //alpha
+        //system.circle(r * cos(alpha), r * sin(alpha), 5);
+        system.line(0, 0, r * cos(alpha), r * sin(alpha));
+        //垂線
+        //system.line(r * cos(alpha), 0, r * cos(alpha), r * sin(alpha));
+        //角
+        //system.drawRectifiedLegs({ x: r * cos(alpha), y: r * sin(alpha) }, { x: r * cos(alpha), y: 0 }, { x: 0, y: 0 });
+
+        system.drawCurlyBrace(0, 0, r * cos(alpha), r * sin(alpha));
+
+        //alpha+beta
+        //system.circle(r * cos(alpha + beta), r * sin(alpha + beta), 5);
+        system.line(0, 0, r * cos(alpha + beta), r * sin(alpha + beta));
+        //垂線
+        system.line(r * cos(alpha + beta), 0, r * cos(alpha + beta), r * sin(alpha + beta))
+        //角
+        system.drawRectifiedLegs({ x: r * cos(alpha + beta), y: r * sin(alpha + beta) }, { x: r * cos(alpha + beta), y: 0 }, { x: 0, y: 0 });
+
+
+        //system.circle(r * cos(beta) * cos(alpha), r * cos(beta) * sin(alpha), 5);
+        //垂線
+        system.line(r * cos(beta) * cos(alpha), 0, r * cos(beta) * cos(alpha), r * cos(beta) * sin(alpha));
+        system.drawRectifiedLegs(
+            { x: r * cos(beta) * cos(alpha), y: r * cos(beta) * sin(alpha) },
+            { x: r * cos(beta) * cos(alpha), y: 0 },
+            { x: 0, y: 0 }
+        );
+
+        system.line(r * cos(beta) * cos(alpha), r * cos(beta) * sin(alpha), r * cos(alpha + beta), r * sin(alpha + beta));
+
+        system.drawRectifiedLegs(
+            { x: r * cos(alpha + beta), y: r * sin(alpha + beta) },
+            { x: r * cos(beta) * cos(alpha), y: r * cos(beta) * sin(alpha) },
+            { x: 0, y: 0 }
+        );
+
+        //system.drawArcBetween({ x: r * cos(alpha), y: r * sin(alpha) }, { x: 0, y: 0 }, { x: 1, y: 0 }, 30);
+
+        system.drawSystem();
+    </script>
+</body>
+
+</html>
